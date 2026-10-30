@@ -1,0 +1,19 @@
+{
+  "name": "courtside-tennis-journal",
+  "version": "7.1.0",
+  "private": true,
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "build:sdk": "node bundle-sdk.cjs"
+  },
+  "dependencies": {
+    "@cloudbase/js-sdk": "2.32.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "description": "Private tennis player and match journal with optional Tencent CloudBase persistence.",
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "envId": "YOUR_CLOUDBASE_ENV_ID",
+  "functionRoot": "functions",
+  "functions": [
+    {
+      "name": "tennisJournal",
+      "runtime": "Nodejs20.19",
+      "handler": "index.main",
+      "timeout": 3,
+      "memorySize": 256,
+      "installDependency": true,
+      "envVariables": {
+        "COACH_UIDS": ""
+      }
+    }
+  ]
+}

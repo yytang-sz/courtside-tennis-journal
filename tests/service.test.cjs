@@ -1,0 +1,39 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),vm=require('node:vm');
+const path=require('node:path');
+const html=fs.readFileSync(path.resolve(__dirname,'../site/index.html'),'utf8');
+const ctx={};vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.resolve(__dirname,'../site/core.js'),'utf8'),ctx);
+const demo=JSON.parse(html.match(/<script id="embeddedDemo" type="application\/json">([\s\S]*?)<\/script>/)[1]);
+const file=path.resolve(__dirname,'../functions/tennisJournal/service.cjs');
+const {createService}=fs.existsSync(file)?require(file):{};
+const clone=x=>structuredClone(x);
+const p=(id='p1')=>({id,name:'测试球员',age:13,gender:'female',ageGroup:'',goals:'加强反手',createdAt:'2026-10-01T00:00:00.000Z'});
+function m(id='m1',playerId='p1'){const r=clone(demo.matches[0]);delete r.embeddedDemo;delete r.simulated;delete r.simulationVersion;r.id=id;r.playerId=playerId;return r;}
+function memoryStore(){
+ let state=new Map(),revs=new Map(),queue=Promise.resolve();
+ const key=(owner,kind,id)=>JSON.stringify([owner,kind,id]);
+ return {
+  run(owner,fn){const job=queue.then(async()=>{const next=new Map(state);let dirty=false;const out=await fn({async get(kind,id){return clone(next.get(key(owner,kind,id))??null);},async put(kind,row){next.set(key(owner,kind,row.id),clone(row));dirty=true;}});state=next;if(dirty)revs.set(owner,(revs.get(owner)||0)+1);return out;});queue=job.catch(()=>{});return job;},
+  async revision(owner){await queue;return revs.get(owner)||0;},
+  async page(owner,kind,cursor='',limit=50){await queue;const rows=[...state].filter(([k])=>{const a=JSON.parse(k);return a[0]===owner&&a[1]===kind&&a[2]>cursor;}).map(([,v])=>clone(v)).sort((a,b)=>a.id.localeCompare(b.id));return {rows:rows.slice(0,limit),cursor:rows.length>limit?rows[limit-1].id:null};}
+ };
+}
+function setup(){assert.equal(typeof createService,'function','cloud record service has not been implemented');const store=memoryStore();return {store,service:createService({store,core:ctx.TennisCore,allowedUids:['coach-a','coach-b']})};}
+const a={uid:'coach-a',anonymous:false},b={uid:'coach-b',anonymous:false};
+test('private service refuses no identity, anonymous identity and unapproved identity',async()=>{const {service}=setup();for(const identity of [null,{uid:'coach-a',anonymous:true},{uid:'intruder'}])await assert.rejects(service.handle({action:'status'},identity),/登录|权限/);});
+test('empty coach allowlist fails closed',async()=>{assert.equal(typeof createService,'function');const s=createService({store:memoryStore(),core:ctx.TennisCore,allowedUids:[]});await assert.rejects(s.handle({action:'status'},a),/权限/);});
+test('same record ID is isolated by authenticated owner, not event ownerId',async()=>{const {service}=setup();await service.handle({action:'add',kind:'players',row:p()},a);await service.handle({action:'add',kind:'players',row:{...p(),name:'另一教练球员'}},b);const page=await service.handle({action:'page',kind:'players',ownerId:'coach-b'},a);assert.equal(page.rows.length,1);assert.equal(page.rows[0].name,'测试球员');});
+test('malformed scores, tenth increments, fields and dates rejected before commit',async()=>{const {service,store}=setup();await service.handle({action:'add',kind:'players',row:p()},a);for(const change of [{ratings:{forehand:10.1}},{ratings:{forehand:6.25}},{date:'2026-02-30'},{ownerId:'coach-b'},{notes:{forehand:'x'.repeat(5001)}}])await assert.rejects(service.handle({action:'add',kind:'matches',row:{...m(),...change}},a));assert.equal((await store.page(a.uid,'matches')).rows.length,0);});
+test('server validates player integer age and gender',async()=>{const {service}=setup();for(const row of [{...p(),age:13.5},{...p(),gender:'unrecognised'},{...p(),name:'   '}])await assert.rejects(service.handle({action:'add',kind:'players',row},a));});
+test('match needs an existing player owned by the current coach',async()=>{const {service}=setup();await service.handle({action:'add',kind:'players',row:p()},b);await assert.rejects(service.handle({action:'add',kind:'matches',row:m()},a),/球员/);});
+test('server derives overall from valid component scores and excludes observer',async()=>{const {service}=setup();await service.handle({action:'add',kind:'players',row:p()},a);const row={...m(),ratings:{forehand:8,backhand:4,movement:null,overall:10},observerRating:10};await service.handle({action:'add',kind:'matches',row},a);const page=await service.handle({action:'page',kind:'matches'},a);assert.equal(page.rows[0].ratings.overall,6);});
+test('response loss retry is idempotent even if client timestamp changes',async()=>{const {service,store}=setup();await service.handle({action:'add',kind:'players',row:p()},a);await service.handle({action:'add',kind:'matches',row:m()},a);const result=await service.handle({action:'add',kind:'matches',row:{...m(),createdAt:'2026-10-24T01:00:00Z'}},a);assert.equal(result.duplicate,true);assert.equal((await store.page(a.uid,'matches')).rows.length,1);assert.equal(await store.revision(a.uid),2);});
+test('changed duplicate must conflict without replacing the original match',async()=>{const {service}=setup();await service.handle({action:'add',kind:'players',row:p()},a);await service.handle({action:'add',kind:'matches',row:m()},a);await assert.rejects(service.handle({action:'add',kind:'matches',row:{...m(),event:'changed'}},a),/冲突|存在/);const page=await service.handle({action:'page',kind:'matches'},a);assert.equal(page.rows[0].event,m().event);});
+test('concurrent player edit rejects stale base; a lost response can replay the same edit',async()=>{const {service}=setup();const original=p(),next={...p(),name:'新姓名',updatedAt:'2026-10-24T00:00:00Z'};await service.handle({action:'add',kind:'players',row:original},a);await service.handle({action:'updatePlayer',row:next,expected:original},a);await service.handle({action:'updatePlayer',row:next,expected:original},a);await assert.rejects(service.handle({action:'updatePlayer',row:{...next,name:'过期修改'},expected:original},a),/改变|冲突/);});
+test('concurrent same-ID creates result in one record, not a duplicate',async()=>{const {service,store}=setup();await Promise.all([service.handle({action:'add',kind:'players',row:p()},a),service.handle({action:'add',kind:'players',row:p()},a)]);assert.equal((await store.page(a.uid,'players')).rows.length,1);});
+test('import batch rolls back earlier additions if a later ID conflicts',async()=>{const {service}=setup();await service.handle({action:'add',kind:'players',row:p()},a);await assert.rejects(service.handle({action:'importBatch',players:[p('p2'),{...p(),name:'different'}],matches:[]},a),/冲突|存在/);assert.equal((await service.handle({action:'page',kind:'players'},a)).rows.length,1);});
+test('import batch validates links and retry does not duplicate imported records',async()=>{const {service}=setup();const event={action:'importBatch',players:[p()],matches:[m()]};const first=await service.handle(event,a);assert.deepEqual(first,{addedP:1,addedM:1});const second=await service.handle(event,a);assert.deepEqual(second,{addedP:0,addedM:0});});
+test('embedded demonstration cannot be uploaded or mutated',async()=>{const {service}=setup();await assert.rejects(service.handle({action:'add',kind:'players',row:demo.players[0]},a),/示例|字段/);});
+test('pagination returns all records with validated limits, never exposes envelopes',async()=>{const {service}=setup();for(let i=0;i<5;i++)await service.handle({action:'add',kind:'players',row:p('p'+i)},a);let cursor=null,rows=[];do{const page=await service.handle({action:'page',kind:'players',cursor,limit:2},a);rows.push(...page.rows);cursor=page.cursor;}while(cursor);assert.equal(rows.length,5);assert.ok(rows.every(r=>!('ownerId' in r)));await assert.rejects(service.handle({action:'page',kind:'bad'},a));await assert.rejects(service.handle({action:'page',kind:'players',limit:5000},a));});
+module.exports={memoryStore,p,m};

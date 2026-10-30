@@ -1,0 +1,13 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const file=path.resolve(__dirname,'../functions/tennisJournal/cloud-store.cjs');
+const {createCloudStore}=fs.existsSync(file)?require(file):{};
+function fakeCloudDatabase(){
+ let state=new Map();const prefix=(name,id)=>name+'/'+id;
+ function scope(rows){return {collection(name){return {doc(id){return {async get(){return {data:structuredClone(rows.get(prefix(name,id))??null)};},async set(row){assert.ok(!('data' in row),'node-sdk set takes a raw document, not web-sdk wrapping');rows.set(prefix(name,id),structuredClone(row));return {id};}};}};}};}
+ return {command:{gt:x=>({gt:x})},...scope(state),async runTransaction(callback){const draft=new Map(state);const result=await callback(scope(draft));state.clear();for(const [k,v]of draft)state.set(k,v);return result;},state};
+}
+test('CloudBase envelope writes original row and revision atomically, rollback keeps both unchanged',async()=>{assert.equal(typeof createCloudStore,'function','CloudBase adapter missing');const db=fakeCloudDatabase(),s=createCloudStore(db);const row={id:'p1',name:'A'};await s.run('u',async tx=>{assert.equal(await tx.get('players','p1'),null);await tx.put('players',row);assert.deepEqual(await tx.get('players','p1'),row);});assert.equal(await s.revision('u'),1);await assert.rejects(s.run('u',async tx=>{await tx.put('players',{id:'p2',name:'B'});throw Error('abort');}),/abort/);assert.equal(await s.revision('u'),1);assert.equal([...db.state.values()].filter(x=>x.record).length,1);});
+test('CloudBase adapter never reads a mismatched owner envelope',async()=>{assert.equal(typeof createCloudStore,'function');const db=fakeCloudDatabase(),s=createCloudStore(db);await s.run('u',tx=>tx.put('players',{id:'p1'}));for(const row of db.state.values())if(row.record)row.ownerId='other';await assert.rejects(s.run('u',tx=>tx.get('players','p1')),/归属|owner/);});
+test('returned SDK error objects cannot masquerade as missing documents or successful writes',async()=>{
+ for(const phase of ['read','write']){const db={collection(){return {doc(){return {async get(){return phase==='read'?{code:'DB_ERROR',message:'read failed'}:{data:null};}};}};},async runTransaction(fn){return fn({collection(){return {doc(){return {async get(){return {data:null};},async set(){return {code:'DB_ERROR',message:'write failed'};}};}};}});}};const s=createCloudStore(db);if(phase==='read')await assert.rejects(s.revision('u'),/read failed/);else await assert.rejects(s.run('u',tx=>tx.put('players',{id:'p1'})),/write failed/);}
+});

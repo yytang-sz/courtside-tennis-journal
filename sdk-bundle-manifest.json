@@ -1,0 +1,5 @@
+{
+  "sdk": "@cloudbase/js-sdk@2.32.0",
+  "esbuild": "0.28.2",
+  "externalImports": []
+}

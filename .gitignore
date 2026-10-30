@@ -1,0 +1,12 @@
+node_modules/
+.DS_Store
+*.log
+*.zip
+.env
+.env.*
+!.env.example
+cloudbaserc.json
+configured-site/
+backups/
+exports/
+coverage/

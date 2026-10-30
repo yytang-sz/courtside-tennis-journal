@@ -1,0 +1,5 @@
+{
+  "tennis_players": {"read": false, "write": false},
+  "tennis_matches": {"read": false, "write": false},
+  "tennis_meta": {"read": false, "write": false}
+}
