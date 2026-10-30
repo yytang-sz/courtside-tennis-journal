@@ -2,7 +2,17 @@
 
 一个面向青少年网球训练的比赛记录工具，帮助教练记录球员表现，并回顾不同场次的变化。支持手机、iPad 和电脑浏览器。
 
-![模拟数据看板 / Sample dashboard](docs/preview.png)
+## 在线体验（无需下载）
+
+### [立即打开场边记录 / Try online](https://yytang-sz.github.io/courtside-tennis-journal/)
+
+打开后点击「查看30场模拟示例」，即可浏览历史记录、区间数据与趋势图。**无需下载、安装 Python 或登录 GitHub。** 在线公开版为只读模拟演示，真实数据保存需接入自己的云环境。
+
+| 数据回顾 / Dashboard | 比赛评分记录 / Match recording |
+| --- | --- |
+| <a href="docs/preview.png"><img src="docs/preview.png" width="320" alt="模拟数据回顾看板"></a> | <a href="docs/recording.png"><img src="docs/recording.png" width="320" alt="虚构球员的比赛评分记录页面"></a> |
+
+点击小图查看原图。图片中的球员和记录均为虚构示例。 / Click a thumbnail to enlarge. All illustrated records are fictional.
 
 ## 主要功能
 
@@ -15,15 +25,15 @@
 
 整体评分为有效分项的平均值，**排除 N/A 和独立的 0–10 分观察评分**。
 
-## 本地预览
+## 可选：本地运行
 
-下载仓库 ZIP 并解压，在项目目录运行：
+仅需要在线体验时，直接使用上方链接即可。需要本地运行或修改源码时，请先安装 Python 3，下载仓库 ZIP 并解压，在包含 `site/` 文件夹的项目目录打开终端，再运行：
 
 ```bash
 python3 -m http.server 8080 --directory site
 ```
 
-打开 <http://localhost:8080>，点击「查看30场模拟示例」。请通过 HTTP/HTTPS 打开，直接双击 HTML 不适用于此云端版本。
+保持终端运行，打开 <http://localhost:8080>，点击「查看30场模拟示例」。`localhost` 只代表运行这个命令的设备，并不是可分享的在线链接。请通过 HTTP/HTTPS 打开，直接双击 HTML 不适用于此云端版本。
 
 默认云端配置为空，仅提供只读示例。**真实记录保存需要部署自己的云环境**，步骤见 [部署说明](docs/deployment.md)。本仓库不连接作者的私人数据库，不包含账号密码、密钥或真实球员记录。
 
@@ -48,4 +58,6 @@ Courtside Tennis Journal helps coaches record junior tennis matches and review p
 
 The overall score averages valid component ratings, excluding N/A and the separate observer rating. The thirty built-in matches are synthetic illustrations, not evidence of training effectiveness.
 
-Run the local preview above or follow the [deployment guide](docs/deployment.md) to connect your own private Tencent CloudBase backend. This repository contains no private player records or production credentials.
+Try the [online demo](https://yytang-sz.github.io/courtside-tennis-journal/) without downloading files, installing Python or signing in to GitHub. Select “Preview sample” to explore the thirty read-only synthetic matches. The screenshots above show the dashboard and match-recording interface; click either thumbnail to enlarge it.
+
+Local setup is optional. Follow the [deployment guide](docs/deployment.md) to connect your own private Tencent CloudBase backend for real records. This repository contains no private player records or production credentials.
